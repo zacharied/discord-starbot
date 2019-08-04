@@ -60,6 +60,10 @@ class StarbotClient(commands.Bot):
             react: discord.Reaction = next(
                 iter([r for r in message.reactions if str(r.emoji) == self.settings['emote']]))
             if react.count >= self.settings['count']:
+                if self.starboard_channel is None:
+                    await message.channel.send("I can't find the starboard channel grrrr :angery:")
+                    return
+
                 embed = discord.Embed()
                 embed.title = 'View'
                 embed.url = message.jump_url
@@ -113,6 +117,23 @@ async def setting(ctx, *args):
             return
 
     await ctx.send(f'Current settings: ```json\n{json.dumps(client.settings, indent=4)}```')
+
+@client.command()
+async def opinion(ctx, *args):
+    if len(args) == 0:
+        await ctx.send('My opinion of whomst?')
+        return
+    
+    if args[0] == 'ilee':
+        await ctx.send('Dirty boy who drops everything.')
+    elif args[0] == 'neko':
+        await ctx.send('Praise be to my ご主人様 orz')
+    elif args[0] == 'cirno':
+        await ctx.send('zoMG is that THE Cirno???')
+        await ctx.send('from touhou project???!')
+        await ctx.send('in this chat??')
+    else:
+        await ctx.send('i have no thoughts on the matter')
 
 if __name__ == '__main__':
     if not os.path.exists('settings.json'):
