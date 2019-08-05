@@ -124,16 +124,36 @@ async def opinion(ctx, *args):
         await ctx.send('My opinion of whomst?')
         return
     
-    if args[0] == 'ilee':
-        await ctx.send('Dirty boy who drops everything.')
-    elif args[0] == 'neko':
-        await ctx.send('Praise be to my ご主人様 orz')
-    elif args[0] == 'cirno':
-        await ctx.send('zoMG is that THE Cirno???')
-        await ctx.send('from touhou project???!')
-        await ctx.send('in this chat??')
-    else:
-        await ctx.send('i have no thoughts on the matter')
+    if not os.path.exists('opinions.json'):
+        await ctx.send("I can't find the opinions file. Someone let neko know.")
+        return
+
+    if args[0][0] == '!':
+        if len(args) < 2:
+            await ctx.send("What should my opinion be?")
+            return
+
+        with open('opinions.json', 'r+', encoding='utf-8') as file:
+            opinions = json.loads(file.read())
+            
+            acc = ""
+            for word in args[1:]:
+                acc += word + ' '
+            acc = acc.strip()
+
+            opinions[args[0][1:]] = acc
+            
+            file.seek(0)
+            file.write(json.dumps(opinions))
+            file.truncate()
+            await ctx.send(f'Gotcha. My new opinion of {args[0][1:]} is "{acc}"')
+
+    with open('opinions.json', 'r', encoding='utf-8') as file:
+        opinions = json.loads(file.read())
+        if args[0] in opinions:
+            await ctx.send(opinions[args[0]])
+        else:
+            await ctx.send('I have no thoughts on the matter.')
 
 if __name__ == '__main__':
     if not os.path.exists('settings.json'):
