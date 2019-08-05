@@ -147,6 +147,7 @@ async def opinion(ctx, *args):
             file.write(json.dumps(opinions))
             file.truncate()
             await ctx.send(f'Gotcha. My new opinion of {args[0][1:]} is "{acc}"')
+            return
 
     with open('opinions.json', 'r', encoding='utf-8') as file:
         opinions = json.loads(file.read())
