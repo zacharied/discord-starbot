@@ -92,6 +92,11 @@ client = StarbotClient(command_prefix='~starbot ')
 async def hi(ctx):
     await ctx.send('hi lol')
 
+@client.command()
+async def info(ctx):
+    await ctx.send('''I am a bot made by Nekoht (https://github.com/zacharied).
+You can find my code at https://github.com/zacharied/discord-starbot .
+If Nekoht isn't in this server then something has gone wrong!''')
 
 @client.command()
 async def setting(ctx, *args):
