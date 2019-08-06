@@ -146,10 +146,10 @@ async def suggest(ctx, *args):
     for word in args:
         acc += word + ' '
     acc = acc.strip()
-    
+
     with open('suggestions.txt', 'a+', encoding='utf-8') as file:
         file.write(acc + '\n')
-    
+
     await ctx.send('Suggestion received!')
 
 @client.command()
@@ -161,7 +161,7 @@ async def opinion(ctx, *args):
     if len(args) == 0:
         await ctx.send('My opinion of whomst?')
         return
-    
+
     if not os.path.exists('opinions.json'):
         await ctx.send("I can't find the opinions file. Someone let neko know.")
         return
@@ -170,7 +170,7 @@ async def opinion(ctx, *args):
         if len(args) < 2:
             await ctx.send("What should my opinion be?")
             return
-        
+
         if args[0][1:].startswith('ilee'):
             acc = ""
             for word in args[1:]:
@@ -182,14 +182,14 @@ async def opinion(ctx, *args):
 
         with open('opinions.json', 'r+', encoding='utf-8') as file:
             opinions = json.loads(file.read())
-            
+
             acc = ""
             for word in args[1:]:
                 acc += word + ' '
             acc = acc.strip()
 
             opinions[args[0][1:]] = acc
-            
+
             file.seek(0)
             file.write(json.dumps(opinions))
             file.truncate()
