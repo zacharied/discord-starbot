@@ -11,8 +11,6 @@ from typing import Union
 
 logging.basicConfig(level=logging.INFO)
 
-STARBOARD_MAP = {}
-
 
 class StarbotClient(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -21,7 +19,8 @@ class StarbotClient(commands.Bot):
 
         # Maintains the mappings between messages the bot has sent to the starboard and the
         # actual message it references.
-        self.starboard_map = {}
+        with open('message_map.json', 'r') as file:
+            self.starboard_map = json.load(file)
 
     def run(self, settings_file, *args):
         """ Runs the bot, loading from and saving to the specified settings file. """
@@ -40,7 +39,7 @@ class StarbotClient(commands.Bot):
             out.write(json.dumps(self.starboard_map))
 
     def set_starboard_channel(self, channel_name):
-        for ch in self.get_all_channels():
+        for ch in self.get_guild(553925863595573264).channels:
             if ch.name == self.settings['channel']:
                 self.starboard_channel = ch
 
@@ -54,6 +53,22 @@ class StarbotClient(commands.Bot):
             raise Exception(
                 f'no channel called "{self.settings["channel"]}" found')
 
+    async def on_raw_reaction_clear(self, payload):
+        await self.on_raw_reaction_remove(payload)
+
+    async def on_raw_reaction_remove(self, payload):
+        message: discord.Message = await self.get_channel(payload.channel_id).fetch_message(payload.message_id)
+        try:
+            react: discord.Reaction = next(
+                iter([r for r in message.reactions if str(r.emoji) == self.settings['emote']]))
+            if react.count < self.settings['count']:
+                if message.id in self.starboard_map:
+                    await (await self.starboard_channel.fetch_message(self.starboard_map[message.id])).delete()
+
+        except StopIteration:
+            # This message doesn't have the react.
+            pass
+
     async def on_raw_reaction_add(self, payload):
         message: discord.Message = await self.get_channel(payload.channel_id).fetch_message(payload.message_id)
         try:
@@ -65,9 +80,7 @@ class StarbotClient(commands.Bot):
                     return
 
                 embed = discord.Embed()
-                embed.title = 'View'
-                embed.url = message.jump_url
-                embed.description = message.content
+                embed.description = f'**[Jump]({message.jump_url})**\n\n{message.content}\n'
                 embed.set_footer(
                     text=f'{self.settings["emote"]}{react.count}  | #{message.channel.name}')
                 embed.set_author(name=message.author.display_name,
@@ -85,18 +98,13 @@ class StarbotClient(commands.Bot):
             pass
 
 
-client = StarbotClient(command_prefix='~starbot ')
+client = StarbotClient(command_prefix='&')
 
 
 @client.command()
 async def hi(ctx):
     await ctx.send('hi lol')
 
-@client.command()
-async def info(ctx):
-    await ctx.send('''I am a bot made by Nekoht (https://github.com/zacharied).
-You can find my code at https://github.com/zacharied/discord-starbot .
-If Nekoht isn't in this server then something has gone wrong!''')
 
 @client.command()
 async def setting(ctx, *args):
@@ -124,6 +132,31 @@ async def setting(ctx, *args):
     await ctx.send(f'Current settings: ```json\n{json.dumps(client.settings, indent=4)}```')
 
 @client.command()
+async def suggest(ctx, *args):
+    if not os.path.exists('suggestions.txt'):
+        await ctx.send("Can't find the suggestions file, someone tell neko")
+        return
+
+    if len(args) == 0:
+        with open('suggestions.txt', 'r', encoding='utf-8') as file:
+            await ctx.send(f'Current suggestions are:\n```{file.read()}```')
+            return
+
+    acc = ""
+    for word in args:
+        acc += word + ' '
+    acc = acc.strip()
+    
+    with open('suggestions.txt', 'a+', encoding='utf-8') as file:
+        file.write(acc + '\n')
+    
+    await ctx.send('Suggestion received!')
+
+@client.command()
+async def sad(ctx):
+    await ctx.send(':(')
+
+@client.command()
 async def opinion(ctx, *args):
     if len(args) == 0:
         await ctx.send('My opinion of whomst?')
@@ -137,6 +170,15 @@ async def opinion(ctx, *args):
         if len(args) < 2:
             await ctx.send("What should my opinion be?")
             return
+        
+        if args[0][1:].startswith('ilee'):
+            acc = ""
+            for word in args[1:]:
+                acc += word + ' '
+            acc = acc.strip()
+            if ('good' in acc.lower() or 'great' in acc.lower()):
+                await ctx.send("yeah sure thing buddy")
+                return
 
         with open('opinions.json', 'r+', encoding='utf-8') as file:
             opinions = json.loads(file.read())
