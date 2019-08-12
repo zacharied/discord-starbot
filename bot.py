@@ -19,6 +19,11 @@ GUILD_ID = 553925863595573264 # actualvntalk
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
+GOODBOY_RESPONSES = [
+    'わんわん！',
+    '<:laelul:575783619503849513>'
+]
+
 class Starbot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(command_prefix='&', *args, **kwargs)
@@ -28,6 +33,8 @@ class Starbot(commands.Bot):
         self.opinions = self.try_load_json('opinions')
         self.quickimages = self.try_load_json('quickimages')
         self.name_locks = self.try_load_json('name_locks')
+
+        self.last_message = None
 
     async def update_starboard_message(self, message: discord.Message):
         """ Updates or creates a post on the starboard corresponding to a message. """
@@ -143,9 +150,9 @@ async def delete_starred(ctx, message_id):
 async def hi(ctx):
     await ctx.send('hi lol')
 
-@bot.command()
+@bot.command(aliases=['gb', 'pet'])
 async def goodboy(ctx):
-    await ctx.send('わんわん!')
+    await ctx.send(random.choice(GOODBOY_RESPONSES))
 
 @bot.command(aliases=['o'])
 async def opinion(ctx, name, *args):
@@ -264,7 +271,9 @@ async def image_get(ctx, name):
         return
     
     index = random.randint(0, len(bot.quickimages[name]) - 1)
-    await ctx.send(content=f'[{index+1}/{len(bot.quickimages[name])}] {bot.quickimages[name][index]}')
+    basename = bot.quickimages[name][index].split('/')[-1]
+    image_text = f'|| {bot.quickimages[name][index]} ||' if basename.startswith('SPOILER_') else bot.quickimages[name][index]
+    await ctx.send(content=f'[{index+1}/{len(bot.quickimages[name])}] {image_text}')
 
 @bot.command(aliases=['ir'])
 async def image_remove(ctx, name, index):
