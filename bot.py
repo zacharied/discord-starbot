@@ -7,6 +7,7 @@ import shutil
 import random
 from functools import reduce
 import re
+from enum import Enum
 
 import logging
 
@@ -14,8 +15,8 @@ from typing import Union
 
 logging.basicConfig(level=logging.DEBUG)
 
-GUILD_ID = 553925863595573264 # actualvntalk
-#GUILD_ID = 575827943125811201 # Neko's server
+#GUILD_ID = 553925863595573264 # actualvntalk
+GUILD_ID = 575827943125811201 # Neko's server
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
@@ -24,44 +25,51 @@ GOODBOY_RESPONSES = [
     '<:laelul:575783619503849513>'
 ]
 
+class Db(Enum):
+    MESSAGE_MAP = 'message_map'
+    SETTINGS = 'settings'
+    OPINIONS = 'opinions'
+    QUICK_IMAGES = 'quickimages'
+    NAME_LOCKS = 'name_locks'
+
 class Starbot(commands.Bot):
+
     def __init__(self, *args, **kwargs):
         super().__init__(command_prefix='&', *args, **kwargs)
 
-        self.message_map = self.try_load_json('message_map')
-        self.settings = self.try_load_json('settings')
-        self.opinions = self.try_load_json('opinions')
-        self.quickimages = self.try_load_json('quickimages')
-        self.name_locks = self.try_load_json('name_locks')
+        self.db = {}
+        for d in Db:
+            self.db_load(d)
 
         self.last_message = None
+        self.guild = None
 
     async def update_starboard_message(self, message: discord.Message):
         """ Updates or creates a post on the starboard corresponding to a message. """
         # Find the react object corresponding to the starboard emote.
         try:
-            react: discord.Reaction = next(filter(lambda r: str(r.emoji) == self.settings['starboard']['emoji'], message.reactions))
+            react: discord.Reaction = next(filter(lambda r: str(r.emoji) == self.db[Db.SETTINGS]['starboard']['emoji'], message.reactions))
         except StopIteration:
             react = None
 
         # Locate the channel to post to.
         try:
-            starboard_channel = next(filter(lambda c: c.name == self.settings['starboard']['channel'], self.guild.channels))
+            starboard_channel = next(filter(lambda c: c.name == self.db[Db.SETTINGS]['starboard']['channel'], self.guild.channels))
         except StopIteration:
-            logging.error(f'Starboard channel "{self.settings["starboard"]["channel"]}" not found.')
+            logging.error(f'Starboard channel "{self.db[Db.SETTINGS]["starboard"]["channel"]}" not found.')
             return
-        
+     
         message_key = str(message.id)
 
         logging.debug(f'Processing starboard react for message {message.id}.')
-        if react is not None and react.count >= self.settings['starboard']['threshold']:
+        if react is not None and react.count >= self.db[Db.SETTINGS]['starboard']['threshold']:
             # Put a new message on the starboard or edit an old one.
-            logging.debug(f'React above thereshold ({react.count} >= {self.settings["starboard"]["threshold"]}).')
+            logging.debug(f'React above thereshold ({react.count} >= {self.db[Db.SETTINGS]["starboard"]["threshold"]}).')
 
             # Set up the embed.
             embed = discord.Embed()
             embed.description = f'**[Jump]({message.jump_url})**\n{message.content}'
-            embed.set_footer(text=f'{self.settings["starboard"]["emoji"]}{react.count}  | #{message.channel.name}')
+            embed.set_footer(text=f'{self.db[Db.SETTINGS]["starboard"]["emoji"]}{react.count}  | #{message.channel.name}')
             embed.set_author(name=message.author.display_name,
                                 icon_url=message.author.avatar_url)
             embed.timestamp = message.created_at
@@ -71,27 +79,27 @@ class Starbot(commands.Bot):
                 if attachment.height is not None:
                     embed.set_image(url=attachment.url)
             
-            if message_key not in self.message_map:
+            if message_key not in self.db[Db.MESSAGE_MAP]:
                 logging.debug('Message has not yet been posted to starboard; sending it!')
 
                 sent = await starboard_channel.send(embed=embed)
-                self.message_map[message_key] = sent.id
+                self.db[Db.MESSAGE_MAP][message_key] = sent.id
 
                 logging.debug(f'Message has been posted to the starboard with ID {sent.id}.')
             else:
-                logging.debug(f'Message already exists on starboard with ID {self.message_map[message_key]}; editing it.')
+                logging.debug(f'Message already exists on starboard with ID {self.db[Db.MESSAGE_MAP][message_key]}; editing it.')
 
-                starboard_message = await starboard_channel.fetch_message(self.message_map[message_key])
+                starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP][message_key])
                 await starboard_message.edit(embed=embed)
-        elif message.id in self.message_map:
+        elif message_key in self.db[Db.MESSAGE_MAP]:
             logging.debug('Reacts fell below threshold. Removing message from starboard.')
             # Message fell below the thereshold.
-            starboard_message = await starboard_channel.fetch_message(self.message_map[message_key])
+            starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP][message_key])
             await starboard_message.delete()
 
-            del self.message_map[message_key]
+            del self.db[Db.MESSAGE_MAP][message_key]
 
-        self.write_json('message_map', self.message_map)
+        self.db_write(Db.MESSAGE_MAP)
 
         logging.debug(f'Done processing react for message {message.id}.')
     
@@ -109,30 +117,28 @@ class Starbot(commands.Bot):
         message = await self.guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
         await self.update_starboard_message(message)
     
-    @staticmethod
-    def try_load_json(path):
-        path = f'local/{path}.json'
+    def db_load(self, db_file):
+        path = f'local/{GUILD_ID}/{db_file.value}.json'
         if not os.path.exists(path):
-            return {}
-        
-        with open(path, 'r', encoding='utf-8') as file:
-            return json.load(file)
+            self.db[db_file] = {}
+        else:
+            with open(path, 'r', encoding='utf-8') as file:
+                self.db[db_file] = json.load(file)
     
-    @staticmethod
-    def write_json(path, obj):
-        path = f'local/{path}.json'
+    def db_write(self, db_file):
+        path = f'local/{GUILD_ID}/{db_file.value}.json'
         with open(path, 'w+', encoding='utf-8') as file:
             logging.info(f'Writing to "{path}".')
-            json.dump(obj, file)
+            json.dump(self.db[db_file], file)
 
 bot = Starbot()
 
 @bot.command()
 async def delete_starred(ctx, message_id):
     try:
-        starboard_channel = next(filter(lambda c: c.name == bot.settings['starboard']['channel'], bot.guild.channels))
+        starboard_channel = next(filter(lambda c: c.name == bot.db[Db.SETTINGS]['starboard']['channel'], bot.guild.channels))
     except StopIteration:
-        logging.error(f'Starboard channel "{bot.settings["starboard"]["channel"]}" not found.')
+        logging.error(f'Starboard channel "{bot.db[Db.SETTINGS]["starboard"]["channel"]}" not found.')
         return
 
     starboard_message = await starboard_channel.fetch_message(int(message_id))
@@ -144,7 +150,7 @@ async def delete_starred(ctx, message_id):
             new_map[k] = bot.message_map[k] 
     bot.message_map = new_map
 
-    bot.write_json('message_map', bot.message_map)
+    bot.db_write(Db.MESSAGE_MAP)
 
 @bot.command()
 async def hi(ctx):
@@ -179,13 +185,13 @@ async def opinion(ctx, name, *args):
         acc = ''
         for arg in args:
             acc += arg + ' '
-        bot.opinions[name] = acc.strip()
+        bot.db[Db.OPINIONS][name] = acc.strip()
 
         await ctx.send(f'Gotcha, my new opinion of {name} is "{acc}".')
 
         logging.debug(f'Opinion for "{name}" set to "{acc}"')
 
-        bot.write_json('opinions', bot.opinions)
+        bot.db_write(Db.OPINIONS)
 
         return
 
@@ -196,12 +202,12 @@ async def opinion(ctx, name, *args):
         await ctx.send('bad boy') 
         return
 
-    if name not in bot.opinions:
+    if name not in bot.db[Db.OPINIONS]:
         logging.debug(f'Opinion for "{name}" not found.')
         await ctx.send(f'I have no thoughts on {name}')
         return
 
-    await ctx.send(bot.opinions[name])
+    await ctx.send(bot.db[Db.OPINIONS][name])
 
 @bot.command(aliases=['ilock'])
 async def image_name_lock(ctx, name):
@@ -212,21 +218,21 @@ async def image_name_lock(ctx, name):
     """
     name = name.lower()
 
-    if name in bot.name_locks:
-        if bot.name_locks[name] == ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS]:
+        if bot.db[Db.NAME_LOCKS][name] == ctx.author.id:
             await ctx.send('You already own that name!')
         else:
             await ctx.send(f'"{name}" is already owned by someone else.')
         return
 
-    for k, v in bot.name_locks.items():
+    for k, v in bot.db[Db.NAME_LOCKS].items():
         if v == ctx.author.id:
             await ctx.send(f'Relinquished ownership of the name "{k}".')
-            del bot.name_locks[k]
+            del bot.db[Db.NAME_LOCKS][k]
             break
     
-    bot.name_locks[name] = ctx.author.id
-    bot.write_json('name_locks', bot.name_locks)
+    bot.db[Db.NAME_LOCKS][name] = ctx.author.id
+    bot.db_write(Db.NAME_LOCKS)
     await ctx.send(f'You now have ownership of "{name}". Enjoy!')
 
 @bot.command(aliases=['ia'])
@@ -243,20 +249,20 @@ async def image_add(ctx, name):
         await ctx.send('Attach an image for me to save it.')
         return
 
-    if name in bot.name_locks and bot.name_locks[name] != ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS] and bot.db[Db.NAME_LOCKS][name] != ctx.author.id:
         await ctx.send('You are not the owner of that name, so you cannot add images to it.')
         return
 
     logging.debug(f'Adding image "{url}" to quickimages of {name}.')
 
-    if name not in bot.quickimages:
-        bot.quickimages[name] = []
+    if name not in bot.db[Db.QUICK_IMAGES]:
+        bot.db[Db.QUICK_IMAGES][name] = []
     
-    bot.quickimages[name].append(url)
+    bot.db[Db.QUICK_IMAGES][name].append(url)
 
-    await ctx.send(f'Added. {name} now has {len(bot.quickimages[name])} images.')
+    await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
 
-    bot.write_json('quickimages', bot.quickimages)
+    bot.db_write(bot.db[Db.QUICK_IMAGES])
 
 @bot.command(aliases=['ig'])
 async def image_get(ctx, name):
@@ -266,14 +272,14 @@ async def image_get(ctx, name):
     """
     name = name.lower()
 
-    if name not in bot.quickimages:
+    if name not in bot.db[Db.QUICK_IMAGES]:
         await ctx.send(f'I have no images for {name}. Please register some with `&ia`')
         return
     
-    index = random.randint(0, len(bot.quickimages[name]) - 1)
-    basename = bot.quickimages[name][index].split('/')[-1]
-    image_text = f'|| {bot.quickimages[name][index]} ||' if basename.startswith('SPOILER_') else bot.quickimages[name][index]
-    await ctx.send(content=f'[{index+1}/{len(bot.quickimages[name])}] {image_text}')
+    index = random.randint(0, len(bot.db[Db.QUICK_IMAGES][name]) - 1)
+    basename = bot.db[Db.QUICK_IMAGES][name][index].split('/')[-1]
+    image_text = f'|| {bot.db[Db.QUICK_IMAGES][name][index]} ||' if basename.startswith('SPOILER_') else bot.db[Db.QUICK_IMAGES][name][index]
+    await ctx.send(content=f'[{index+1}/{len(bot.db[Db.QUICK_IMAGES][name])}] {image_text}')
 
 @bot.command(aliases=['ir'])
 async def image_remove(ctx, name, index):
@@ -283,11 +289,11 @@ async def image_remove(ctx, name, index):
     """
     name = name.lower()
 
-    if name not in bot.quickimages:
+    if name not in bot.db[Db.QUICK_IMAGES]:
         await ctx.send('There are no images to remove.')
         return
 
-    if name in bot.name_locks and bot.name_locks[name] != ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS] and bot.db[Db.NAME_LOCKS][name] != ctx.author.id:
         await ctx.send('You are not the owner of that name, so you cannot remove images from it.')
         return
 
@@ -297,15 +303,15 @@ async def image_remove(ctx, name, index):
         await ctx.send('Please enter an integer index.')
         return
 
-    if index >= len(bot.quickimages[name]):
+    if index >= len(bot.db[Db.QUICK_IMAGES][name]):
         await ctx.send('Invalid index.')
         return
 
-    del bot.quickimages[name][index]
+    del bot.db[Db.QUICK_IMAGES][name][index]
 
-    bot.write_json('quickimages', bot.quickimages)
+    bot.db_write(Db.QUICK_IMAGES)
 
-    await ctx.send(f'Deleted. {name} now has {len(bot.quickimages[name])} images.')
+    await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
 
 @bot.command(aliases=['id'])
 async def image_dump(ctx, name):
@@ -314,13 +320,13 @@ async def image_dump(ctx, name):
     """
     name = name.lower()
 
-    if name not in bot.quickimages:
+    if name not in bot.db[Db.QUICK_IMAGES]:
         await ctx.send('There are no images to dump.')
         return
 
     text = f'```\nName: {name}\n=====================\n'
     
-    for i, image in enumerate(bot.quickimages[name]):
+    for i, image in enumerate(bot.db[Db.QUICK_IMAGES][name]):
         line = f' {i+1:>3} {image}\n'
         if len(text) >= 2000 - len(line) - len('```'):
             await ctx.send(text + '```')
@@ -334,7 +340,7 @@ async def image_dump(ctx, name):
 async def setting(ctx, *args):
     if len(args) == 0:
         # Just print the settings.
-        await ctx.send(f'My current settings are:\n```json\n{json.dumps(bot.settings, indent=4)}\n```')
+        await ctx.send(f'My current settings are:\n```json\n{json.dumps(bot.db[Db.SETTINGS], indent=4)}\n```')
         return
     
     # Otherwise set one.
@@ -344,7 +350,7 @@ async def setting(ctx, *args):
     
     # Descend into the settings object by each `.` in the argument.
     splitter = args[0].split('.')
-    settings_domain = bot.settings
+    settings_domain = bot.db[Db.SETTINGS]
     while len(splitter) > 1:
         settings_domain = settings_domain[splitter[0]]
         splitter = splitter[1:]
@@ -361,7 +367,7 @@ async def setting(ctx, *args):
         await ctx.send(f'I was unable to convert "{args[-1]}" to the right type.')
         return
     
-    bot.write_json('settings', bot.settings)
+    bot.db_write(Db.SETTINGS)
 
 with open('token.txt', 'r') as token:
     bot.run(token.read())
