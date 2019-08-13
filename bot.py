@@ -36,10 +36,6 @@ class Starbot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(command_prefix='&', *args, **kwargs)
 
-        self.db = {}
-        for d in Db:
-            self.db_load(d)
-
         self.last_message = None
 
         self.guild = None
@@ -273,12 +269,22 @@ async def image_add(ctx, name):
     bot.db_write(bot.db[Db.QUICK_IMAGES])
 
 @bot.command(aliases=['ig'])
-async def image_get(ctx, name):
+async def image_get(ctx, *args):
     """
     Retrieve a random image that has been registered to a name through
     `image_add`.
     """
-    name = name.lower()
+    if len(args) < 1:
+        try:
+            name = next(iter([k for k, v in bot.db[Db.NAME_LOCKS].items() if v == ctx.author.id]))
+        except StopIteration:
+            await ctx.send('To call `image_get` with no name, you have to register your name with `image_name_lock` first!') 
+            return
+    else:
+        name = args[0].lower()
+    
+    if len(args) > 1:
+        await ctx.send('Too many arguments!')
 
     if name not in bot.db[Db.QUICK_IMAGES]:
         await ctx.send(f'I have no images for {name}. Please register some with `&ia`')
