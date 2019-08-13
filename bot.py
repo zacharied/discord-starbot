@@ -47,6 +47,9 @@ class Starbot(commands.Bot):
     
     def run(self, guild_id, *args, **kwargs):
         self.guild_id = guild_id
+        self.db = {}
+        for d in Db:
+            self.db_load(d)
         return super().run(*args, **kwargs)
 
     async def update_starboard_message(self, message: discord.Message):
@@ -123,7 +126,7 @@ class Starbot(commands.Bot):
         await self.update_starboard_message(message)
     
     def db_load(self, db_file):
-        path = f'local/{GUILD_ID}/{db_file.value}.json'
+        path = f'local/{self.guild_id}/{db_file.value}.json'
         if not os.path.exists(path):
             self.db[db_file] = {}
         else:
@@ -131,7 +134,7 @@ class Starbot(commands.Bot):
                 self.db[db_file] = json.load(file)
     
     def db_write(self, db_file):
-        path = f'local/{GUILD_ID}/{db_file.value}.json'
+        path = f'local/{self.guild_id}/{db_file.value}.json'
         with open(path, 'w+', encoding='utf-8') as file:
             logging.info(f'Writing to "{path}".')
             json.dump(self.db[db_file], file)
