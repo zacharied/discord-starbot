@@ -1,22 +1,22 @@
+#!/usr/bin/env python3.7
+
 import discord
 from discord.ext import commands
 
 import json
-import os
+import os, sys
 import shutil
 import random
 from functools import reduce
 import re
 from enum import Enum
+import argparse
 
 import logging
 
 from typing import Union
 
 logging.basicConfig(level=logging.DEBUG)
-
-#GUILD_ID = 553925863595573264 # actualvntalk
-GUILD_ID = 575827943125811201 # Neko's server
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
@@ -33,7 +33,6 @@ class Db(Enum):
     NAME_LOCKS = 'name_locks'
 
 class Starbot(commands.Bot):
-
     def __init__(self, *args, **kwargs):
         super().__init__(command_prefix='&', *args, **kwargs)
 
@@ -42,7 +41,13 @@ class Starbot(commands.Bot):
             self.db_load(d)
 
         self.last_message = None
+
         self.guild = None
+        self.guild_id = None
+    
+    def run(self, guild_id, *args, **kwargs):
+        self.guild_id = guild_id
+        return super().run(*args, **kwargs)
 
     async def update_starboard_message(self, message: discord.Message):
         """ Updates or creates a post on the starboard corresponding to a message. """
@@ -104,7 +109,7 @@ class Starbot(commands.Bot):
         logging.debug(f'Done processing react for message {message.id}.')
     
     async def on_ready(self):
-        self.guild: discord.Guild = self.get_guild(GUILD_ID)
+        self.guild: discord.Guild = self.get_guild(self.guild_id)
         logging.info(f'Logged in as "{self.user}".')
 
     async def on_raw_reaction_add(self, payload):
@@ -369,5 +374,18 @@ async def setting(ctx, *args):
     
     bot.db_write(Db.SETTINGS)
 
-with open('token.txt', 'r') as token:
-    bot.run(token.read())
+if not os.path.exists('servers.json'):
+    print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
+    sys.exit(1)
+
+if not os.path.exists('token.txt'):
+    print('Token file not found. Place your Discord token ID in a file called `token.txt`.', file=sys.stderr)
+    sys.exit(1)
+
+with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_file:
+    servers = json.load(servers_file)
+    if sys.argv[1] not in servers:
+        print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
+        sys.exit(1)
+
+    bot.run(servers[sys.argv[1]], token_file.read())
