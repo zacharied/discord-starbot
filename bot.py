@@ -397,4 +397,4 @@ with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_
         print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
         sys.exit(1)
 
-    bot.run(servers[sys.argv[1]], token_file.read())
+    bot.run(int(servers[sys.argv[1]]), token_file.read())
