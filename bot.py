@@ -214,7 +214,7 @@ async def opinion(ctx, name, *args):
             acc += arg + ' '
         bot.db[Db.OPINIONS][name] = acc.strip()
 
-        await ctx.send(f'Gotcha, my new opinion of {name} is "{acc}".')
+        await ctx.send(f'Gotcha, my new opinion of {name} is "{acc.strip()}".')
 
         logging.debug(f'Opinion for "{name}" set to "{acc}"')
 
