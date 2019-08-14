@@ -13,10 +13,16 @@ from enum import Enum
 import argparse
 
 import logging
+from logging.handlers import RotatingFileHandler
 
 from typing import Union
 
-logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('root')
+logger.setLevel(logging.INFO)
+
+log_handler = RotatingFileHandler('bot.log', maxBytes=1024*1024*5, backupCount=2)
+log_handler.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
@@ -24,6 +30,9 @@ GOODBOY_RESPONSES = [
     'わんわん！',
     '<:laelul:575783619503849513>'
 ]
+
+class DifferentServerCheckFail(commands.CommandError):
+    pass
 
 class Db(Enum):
     MESSAGE_MAP = 'message_map'
@@ -111,15 +120,23 @@ class Starbot(commands.Bot):
         self.guild: discord.Guild = self.get_guild(self.guild_id)
         logging.info(f'Logged in as "{self.user}".')
 
+    async def on_reaction(self, payload):
+        if payload.guild_id != self.guild_id:
+            return
+        message = await self.guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
+        await self.update_starboard_message(message)
+
     async def on_raw_reaction_add(self, payload):
-        message = await self.guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
-        await self.update_starboard_message(message)
+        await self.on_reaction(payload)
     async def on_raw_reaction_remove(self, payload):
-        message = await self.guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
-        await self.update_starboard_message(message)
+        await self.on_reaction(payload)
     async def on_raw_reaction_clear(self, payload):
-        message = await self.guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
-        await self.update_starboard_message(message)
+        await self.on_reaction(payload)
+
+    async def on_command_error(self, ctx, error):
+        if type(error) is DifferentServerCheckFail:
+            return
+        return await super().on_command_error(ctx, error)
     
     def db_load(self, db_file):
         path = f'local/{self.guild_id}/{db_file.value}.json'
@@ -134,8 +151,14 @@ class Starbot(commands.Bot):
         with open(path, 'w+', encoding='utf-8') as file:
             logging.info(f'Writing to "{path}".')
             json.dump(self.db[db_file], file)
-
+    
 bot = Starbot()
+
+@bot.check
+def check_guild(ctx):
+    if ctx.message.guild.id != bot.guild_id:
+        raise DifferentServerCheckFail()
+    return True
 
 @bot.command()
 async def delete_starred(ctx, message_id):
