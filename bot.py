@@ -11,6 +11,7 @@ from functools import reduce
 import re
 from enum import Enum
 import argparse
+import numpy as np
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -405,6 +406,29 @@ async def setting(ctx, *args):
         return
     
     bot.db_write(Db.SETTINGS)
+
+@bot.command(aliases=['txt'])
+async def txt(ctx):
+    def make_pairs(corpus):
+        for i in range(len(corpus)-1):
+            yield (corpus[i], corpus [i+1])
+    babby_txt = open('avn_general.txt', encoding='utf8').read()
+    corpus = babby_txt.split()
+    pairs = make_pairs(corpus)
+    word_dict = {}
+    for word_1, word_2 in pairs:
+        if word_1 in word_dict.keys():
+            word_dict[word_1].append(word_2)
+        else:
+            word_dict[word_1] = [word_2]
+
+    first_word = np.random.choice(corpus)
+    chain = [first_word]
+    n_words = np.random.randint(5, 50)
+    for i in range(n_words):
+        chain.append(np.random.choice(word_dict[chain[-1]]))
+    babby_txt.close()
+    await ctx.send(f' '.join(chain))
 
 if not os.path.exists('servers.json'):
     print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
