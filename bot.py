@@ -11,7 +11,6 @@ from functools import reduce
 import re
 from enum import Enum
 import argparse
-import numpy as np
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -422,11 +421,11 @@ async def txt(ctx):
         else:
             word_dict[word_1] = [word_2]
 
-    first_word = np.random.choice(corpus)
+    first_word = random.choice(corpus)
     chain = [first_word]
-    n_words = np.random.randint(5, 50)
+    n_words = random.randint(5, 50)
     for i in range(n_words):
-        chain.append(np.random.choice(word_dict[chain[-1]]))
+        chain.append(random.choice(word_dict[chain[-1]]))
     babby_txt.close()
     await ctx.send(f' '.join(chain))
 
