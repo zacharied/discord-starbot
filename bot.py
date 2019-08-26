@@ -411,23 +411,24 @@ async def txt(ctx):
     def make_pairs(corpus):
         for i in range(len(corpus)-1):
             yield (corpus[i], corpus [i+1])
-    babby_txt = open('avn_general.txt', encoding='utf8').read()
-    corpus = babby_txt.split()
-    pairs = make_pairs(corpus)
-    word_dict = {}
-    for word_1, word_2 in pairs:
-        if word_1 in word_dict.keys():
-            word_dict[word_1].append(word_2)
-        else:
-            word_dict[word_1] = [word_2]
 
-    first_word = random.choice(corpus)
-    chain = [first_word]
-    n_words = random.randint(5, 50)
-    for i in range(n_words):
-        chain.append(random.choice(word_dict[chain[-1]]))
-    babby_txt.close()
-    await ctx.send(f' '.join(chain))
+    with open('avn_general.txt', encoding='utf8') as txt_file:
+        babby_txt = txt_file.read()
+        corpus = babby_txt.split()
+        pairs = make_pairs(corpus)
+        word_dict = {}
+        for word_1, word_2 in pairs:
+            if word_1 in word_dict.keys():
+                word_dict[word_1].append(word_2)
+            else:
+                word_dict[word_1] = [word_2]
+
+        first_word = random.choice(corpus)
+        chain = [first_word]
+        n_words = random.randint(5, 50)
+        for i in range(n_words):
+            chain.append(random.choice(word_dict[chain[-1]]))
+        await ctx.send(f' '.join(chain))
 
 if not os.path.exists('servers.json'):
     print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
