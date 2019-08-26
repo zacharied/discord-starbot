@@ -406,7 +406,7 @@ async def setting(ctx, *args):
     
     bot.db_write(Db.SETTINGS)
 
-@bot.command(aliases=['txt'])
+@bot.command()
 async def txt(ctx):
     def make_pairs(corpus):
         for i in range(len(corpus)-1):
