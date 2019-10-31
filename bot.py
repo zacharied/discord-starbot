@@ -151,6 +151,17 @@ class Starbot(commands.Bot):
         with open(path, 'w+', encoding='utf-8') as file:
             logging.info(f'Writing to "{path}".')
             json.dump(self.db[db_file], file)
+
+    @staticmethod
+    def name_lock_help_message():
+        return "Please register your name with `image_name_lock` first."
+
+    def get_locked_name(self, user_id):
+        try:
+            name = next(iter([k for k, v in self.db[Db.NAME_LOCKS].items() if v == user_id]))
+            return name
+        except StopIteration:
+            return None
     
 bot = Starbot()
 
@@ -262,13 +273,31 @@ async def image_name_lock(ctx, name):
     bot.db_write(Db.NAME_LOCKS)
     await ctx.send(f'You now have ownership of "{name}". Enjoy!')
 
+@bot.command(aliases=['inames'])
+async def image_list_names(ctx):
+    """
+    Print a list of all names and a count of the images owned by them.
+    """
+    out = "```\n"
+
+    for name, image_list in items(bot.db[Db.NAME_LOCKS]):
+        out += f'{name} | {len(image_list)}\n'
+         
+    return out + "```"
+
 @bot.command(aliases=['ia'])
-async def image_add(ctx, name):
+async def image_add(ctx, *args):
     """
     Add an image for a name. Calling `image_get` with the same name will
     retrieve a random image that has been added through here.
     """
-    name = name.lower()
+    if len(args) < 1:
+        name = bot.get_locked_name(ctx.author.id)
+        if name is None:
+            await ctx.send(bot.name_lock_help_message())
+            return
+    else:
+        name = args[0].lower()
 
     if len(ctx.message.attachments) > 0:
         url = ctx.message.attachments[0].url
@@ -289,7 +318,7 @@ async def image_add(ctx, name):
 
     await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
 
-    bot.db_write(bot.db[Db.QUICK_IMAGES])
+    bot.db_write(Db.QUICK_IMAGES)
 
 @bot.command(aliases=['ig'])
 async def image_get(ctx, *args):
@@ -298,10 +327,9 @@ async def image_get(ctx, *args):
     `image_add`.
     """
     if len(args) < 1:
-        try:
-            name = next(iter([k for k, v in bot.db[Db.NAME_LOCKS].items() if v == ctx.author.id]))
-        except StopIteration:
-            await ctx.send('To call `image_get` with no name, you have to register your name with `image_name_lock` first!') 
+        name = bot.get_locked_name(ctx.author.id)
+        if name is None:
+            await ctx.send(bot.name_lock_help_message())
             return
     else:
         name = args[0].lower()
@@ -351,11 +379,17 @@ async def image_remove(ctx, name, index):
     await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
 
 @bot.command(aliases=['id'])
-async def image_dump(ctx, name):
+async def image_dump(ctx, *args):
     """
     Print out a list of images for a name along with their indices.
     """
-    name = name.lower()
+    if len(args) < 1:
+        name = bot.get_locked_name(ctx.author.id)
+        if name is None:
+            await ctx.send(bot.name_lock_help_message())
+            return
+    else:
+        name = args[0].lower()
 
     if name not in bot.db[Db.QUICK_IMAGES]:
         await ctx.send('There are no images to dump.')
