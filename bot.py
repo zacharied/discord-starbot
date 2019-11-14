@@ -459,7 +459,7 @@ async def txt(ctx):
 
         first_word = random.choice(corpus)
         chain = [first_word]
-        n_words = random.randint(5, 50)
+        n_words = random.randint(5, 30)
         for i in range(n_words):
             chain.append(random.choice(word_dict[chain[-1]]))
         await ctx.send(f' '.join(chain))
