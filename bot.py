@@ -320,7 +320,7 @@ async def image_add(ctx, *args):
 
     bot.db_write(Db.QUICK_IMAGES)
 
-@bot.command(aliases=['ig'])
+@bot.command(aliases=['ig', 'i'])
 async def image_get(ctx, *args):
     """
     Retrieve a random image that has been registered to a name through
