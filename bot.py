@@ -18,11 +18,8 @@ from logging.handlers import RotatingFileHandler
 from typing import Union
 
 logger = logging.getLogger('root')
-logger.setLevel(logging.INFO)
-
 log_handler = RotatingFileHandler('bot.log', maxBytes=1024*1024*5, backupCount=2)
-log_handler.setLevel(logging.INFO)
-logger.addHandler(log_handler)
+logging.basicConfig(level=logging.INFO, handlers=[log_handler])
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
