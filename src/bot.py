@@ -11,21 +11,26 @@ from functools import reduce
 import re
 from enum import Enum
 import argparse
+import asyncio
 
 import logging
 from logging.handlers import RotatingFileHandler
 
 from typing import Union
 
+import bot_cog
+
 logger = logging.getLogger('root')
 log_handler = RotatingFileHandler('bot.log', maxBytes=1024*1024*5, backupCount=2)
-logging.basicConfig(level=logging.INFO, handlers=[log_handler])
+logging.basicConfig(level=logging.INFO, handlers=[log_handler, logging.StreamHandler()])
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
 
 GOODBOY_RESPONSES = [
     'わんわん！',
-    '<:laelul:575783619503849513>'
+    '<:laelul:575783619503849513>',
+    '汪汪',
+    '멍멍'
 ]
 
 class DifferentServerCheckFail(commands.CommandError):
@@ -37,6 +42,7 @@ class Db(Enum):
     OPINIONS = 'opinions'
     QUICK_IMAGES = 'quickimages'
     NAME_LOCKS = 'name_locks'
+    BOT_POINTS = 'bot_points'
 
 class Starbot(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -52,34 +58,42 @@ class Starbot(commands.Bot):
         self.db = {}
         for d in Db:
             self.db_load(d)
+
         return super().run(*args, **kwargs)
+
+    @property
+    def settings(self):
+        return self.db[Db.SETTINGS.value]
+
+    def cog_db(self, cog_name):
+        return bot_cog.CogDb(self, cog_name)
 
     async def update_starboard_message(self, message: discord.Message):
         """ Updates or creates a post on the starboard corresponding to a message. """
         # Find the react object corresponding to the starboard emote.
         try:
-            react: discord.Reaction = next(filter(lambda r: str(r.emoji) == self.db[Db.SETTINGS]['starboard']['emoji'], message.reactions))
+            react: discord.Reaction = next(filter(lambda r: str(r.emoji) == self.db[Db.SETTINGS.value]['starboard']['emoji'], message.reactions))
         except StopIteration:
             react = None
 
         # Locate the channel to post to.
         try:
-            starboard_channel = next(filter(lambda c: c.name == self.db[Db.SETTINGS]['starboard']['channel'], self.guild.channels))
+            starboard_channel = next(filter(lambda c: c.name == self.db[Db.SETTINGS.value]['starboard']['channel'], self.guild.channels))
         except StopIteration:
-            logging.error(f'Starboard channel "{self.db[Db.SETTINGS]["starboard"]["channel"]}" not found.')
+            logging.error(f'Starboard channel "{self.db[Db.SETTINGS.value]["starboard"]["channel"]}" not found.')
             return
      
         message_key = str(message.id)
 
         logging.debug(f'Processing starboard react for message {message.id}.')
-        if react is not None and react.count >= self.db[Db.SETTINGS]['starboard']['threshold']:
+        if react is not None and react.count >= self.db[Db.SETTINGS.value]['starboard']['threshold']:
             # Put a new message on the starboard or edit an old one.
-            logging.debug(f'React above thereshold ({react.count} >= {self.db[Db.SETTINGS]["starboard"]["threshold"]}).')
+            logging.debug(f'React above thereshold ({react.count} >= {self.db[Db.SETTINGS.value]["starboard"]["threshold"]}).')
 
             # Set up the embed.
             embed = discord.Embed()
             embed.description = f'**[Jump]({message.jump_url})**\n{message.content}'
-            embed.set_footer(text=f'{self.db[Db.SETTINGS]["starboard"]["emoji"]}{react.count}  | #{message.channel.name}')
+            embed.set_footer(text=f'{self.db[Db.SETTINGS.value]["starboard"]["emoji"]}{react.count}  | #{message.channel.name}')
             embed.set_author(name=message.author.display_name,
                                 icon_url=message.author.avatar_url)
             embed.timestamp = message.created_at
@@ -89,25 +103,25 @@ class Starbot(commands.Bot):
                 if attachment.height is not None:
                     embed.set_image(url=attachment.url)
             
-            if message_key not in self.db[Db.MESSAGE_MAP]:
+            if message_key not in self.db[Db.MESSAGE_MAP.value]:
                 logging.debug('Message has not yet been posted to starboard; sending it!')
 
                 sent = await starboard_channel.send(embed=embed)
-                self.db[Db.MESSAGE_MAP][message_key] = sent.id
+                self.db[Db.MESSAGE_MAP.value][message_key] = sent.id
 
                 logging.debug(f'Message has been posted to the starboard with ID {sent.id}.')
             else:
-                logging.debug(f'Message already exists on starboard with ID {self.db[Db.MESSAGE_MAP][message_key]}; editing it.')
+                logging.debug(f'Message already exists on starboard with ID {self.db[Db.MESSAGE_MAP.value][message_key]}; editing it.')
 
-                starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP][message_key])
+                starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP.value][message_key])
                 await starboard_message.edit(embed=embed)
-        elif message_key in self.db[Db.MESSAGE_MAP]:
+        elif message_key in self.db[Db.MESSAGE_MAP.value]:
             logging.debug('Reacts fell below threshold. Removing message from starboard.')
             # Message fell below the thereshold.
-            starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP][message_key])
+            starboard_message = await starboard_channel.fetch_message(self.db[Db.MESSAGE_MAP.value][message_key])
             await starboard_message.delete()
 
-            del self.db[Db.MESSAGE_MAP][message_key]
+            del self.db[Db.MESSAGE_MAP.value][message_key]
 
         self.db_write(Db.MESSAGE_MAP)
 
@@ -116,6 +130,12 @@ class Starbot(commands.Bot):
     async def on_ready(self):
         self.guild: discord.Guild = self.get_guild(self.guild_id)
         logging.info(f'Logged in as "{self.user}".')
+
+        if self.db[Db.SETTINGS.value]['points_tracker']['enabled'] is True:
+            # Start points tracker loop.
+            from cogs.points_tracker import PointsTracker
+            tracker = PointsTracker(self, logging)
+            self.add_cog(tracker)
 
     async def on_reaction(self, payload):
         if payload.guild_id != self.guild_id:
@@ -135,19 +155,27 @@ class Starbot(commands.Bot):
             return
         return await super().on_command_error(ctx, error)
     
-    def db_load(self, db_file):
-        path = f'local/{self.guild_id}/{db_file.value}.json'
+    # TODO Replace `db_load` with this.
+    def db_load_name(self, db_file):
+        path = f'local/{self.guild_id}/{db_file}.json'
         if not os.path.exists(path):
             self.db[db_file] = {}
         else:
             with open(path, 'r', encoding='utf-8') as file:
                 self.db[db_file] = json.load(file)
-    
-    def db_write(self, db_file):
-        path = f'local/{self.guild_id}/{db_file.value}.json'
+        return self.db[db_file]
+
+    def db_load(self, db_file):
+        return self.db_load_name(db_file.value)
+
+    def db_write_name(self, db_file):
+        path = f'local/{self.guild_id}/{db_file}.json'
         with open(path, 'w+', encoding='utf-8') as file:
             logging.info(f'Writing to "{path}".')
             json.dump(self.db[db_file], file)
+    
+    def db_write(self, db_file):
+        return self.db_write_name(db_file.value)
 
     @staticmethod
     def name_lock_help_message():
@@ -155,7 +183,7 @@ class Starbot(commands.Bot):
 
     def get_locked_name(self, user_id):
         try:
-            name = next(iter([k for k, v in self.db[Db.NAME_LOCKS].items() if v == user_id]))
+            name = next(iter([k for k, v in self.db[Db.NAME_LOCKS.value].items() if v == user_id]))
             return name
         except StopIteration:
             return None
@@ -171,9 +199,9 @@ def check_guild(ctx):
 @bot.command()
 async def delete_starred(ctx, message_id):
     try:
-        starboard_channel = next(filter(lambda c: c.name == bot.db[Db.SETTINGS]['starboard']['channel'], bot.guild.channels))
+        starboard_channel = next(filter(lambda c: c.name == bot.db[Db.SETTINGS.value]['starboard']['channel'], bot.guild.channels))
     except StopIteration:
-        logging.error(f'Starboard channel "{bot.db[Db.SETTINGS]["starboard"]["channel"]}" not found.')
+        logging.error(f'Starboard channel "{bot.db[Db.SETTINGS.value]["starboard"]["channel"]}" not found.')
         return
 
     starboard_message = await starboard_channel.fetch_message(int(message_id))
@@ -408,7 +436,7 @@ async def image_dump(ctx, *args):
 async def setting(ctx, *args):
     if len(args) == 0:
         # Just print the settings.
-        await ctx.send(f'My current settings are:\n```json\n{json.dumps(bot.db[Db.SETTINGS], indent=4)}\n```')
+        await ctx.send(f'My current settings are:\n```json\n{json.dumps(bot.db[Db.SETTINGS.value], indent=4)}\n```')
         return
     
     # Otherwise set one.
@@ -418,7 +446,7 @@ async def setting(ctx, *args):
     
     # Descend into the settings object by each `.` in the argument.
     splitter = args[0].split('.')
-    settings_domain = bot.db[Db.SETTINGS]
+    settings_domain = bot.db[Db.SETTINGS.value]
     while len(splitter) > 1:
         settings_domain = settings_domain[splitter[0]]
         splitter = splitter[1:]
@@ -461,18 +489,19 @@ async def txt(ctx):
             chain.append(random.choice(word_dict[chain[-1]]))
         await ctx.send(f' '.join(chain))
 
-if not os.path.exists('servers.json'):
-    print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
-    sys.exit(1)
-
-if not os.path.exists('token.txt'):
-    print('Token file not found. Place your Discord token ID in a file called `token.txt`.', file=sys.stderr)
-    sys.exit(1)
-
-with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_file:
-    servers = json.load(servers_file)
-    if sys.argv[1] not in servers:
-        print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
+if __name__ == '__main__':
+    if not os.path.exists('servers.json'):
+        print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
         sys.exit(1)
 
-    bot.run(int(servers[sys.argv[1]]), token_file.read())
+    if not os.path.exists('token.txt'):
+        print('Token file not found. Place your Discord token ID in a file called `token.txt`.', file=sys.stderr)
+        sys.exit(1)
+
+    with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_file:
+        servers = json.load(servers_file)
+        if sys.argv[1] not in servers:
+            print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
+            sys.exit(1)
+
+        bot.run(int(servers[sys.argv[1]]), token_file.read())
