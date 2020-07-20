@@ -25,6 +25,7 @@ log_handler.setLevel(logging.INFO)
 logger.addHandler(log_handler)
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
+MORNING_REGEX = re.compile(r'(?:^|\W)(morning)(?:$|\W)', re.IGNORECASE)
 
 GOODBOY_RESPONSES = [
     'わんわん！',
@@ -153,12 +154,14 @@ class Starbot(commands.Bot):
             json.dump(self.db[db_file], file)
     
 bot = Starbot()
+m_counter = 0
 
 @bot.check
 def check_guild(ctx):
     if ctx.message.guild.id != bot.guild_id:
         raise DifferentServerCheckFail()
     return True
+
 
 @bot.command()
 async def delete_starred(ctx, message_id):
@@ -176,7 +179,6 @@ async def delete_starred(ctx, message_id):
         if bot.message_map[k] != int(message_id):
             new_map[k] = bot.message_map[k] 
     bot.message_map = new_map
-
     bot.db_write(Db.MESSAGE_MAP)
 
 @bot.command()
@@ -428,6 +430,20 @@ async def txt(ctx):
         chain.append(random.choice(word_dict[chain[-1]]))
     babby_txt.close()
     await ctx.send(f' '.join(chain))
+
+@bot.event
+async def on_message(message):
+    # The morning event
+    def morning_counter(message):
+        if (message.author == bot.user):
+            return
+        if (MORNING_REGEX.match(message.content)):
+            m_counter += 1
+        if m_counter == 5:
+            m_counter = 0
+            await message.channel.send('Morning') 
+    await morning_counter(message)  
+    await bot.process_commands(message)
 
 if not os.path.exists('servers.json'):
     print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
