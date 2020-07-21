@@ -25,6 +25,7 @@ log_handler = RotatingFileHandler('bot.log', maxBytes=1024*1024*5, backupCount=2
 logging.basicConfig(level=logging.INFO, handlers=[log_handler, logging.StreamHandler()])
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
+MORNING_REGEX = re.compile(r'(?:^|\W)(morning)(?:$|\W)', re.IGNORECASE)
 
 GOODBOY_RESPONSES = [
     'わんわん！',
@@ -58,6 +59,8 @@ class Starbot(commands.Bot):
         self.db = {}
         for d in Db:
             self.db_load(d)
+
+        self.morning_counter = 0
 
         return super().run(*args, **kwargs)
 
@@ -196,6 +199,7 @@ def check_guild(ctx):
         raise DifferentServerCheckFail()
     return True
 
+
 @bot.command()
 async def delete_starred(ctx, message_id):
     try:
@@ -212,7 +216,6 @@ async def delete_starred(ctx, message_id):
         if bot.message_map[k] != int(message_id):
             new_map[k] = bot.message_map[k] 
     bot.message_map = new_map
-
     bot.db_write(Db.MESSAGE_MAP)
 
 @bot.command()
@@ -336,12 +339,12 @@ async def image_add(ctx, *args):
 
     logging.debug(f'Adding image "{url}" to quickimages of {name}.')
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
-        bot.db[Db.QUICK_IMAGES][name] = []
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
+        bot.db[Db.QUICK_IMAGES.value][name] = []
     
-    bot.db[Db.QUICK_IMAGES][name].append(url)
+    bot.db[Db.QUICK_IMAGES.value][name].append(url)
 
-    await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
+    await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES.value][name])} images.')
 
     bot.db_write(Db.QUICK_IMAGES)
 
@@ -362,14 +365,14 @@ async def image_get(ctx, *args):
     if len(args) > 1:
         await ctx.send('Too many arguments!')
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send(f'I have no images for {name}. Please register some with `&ia`')
         return
     
-    index = random.randint(0, len(bot.db[Db.QUICK_IMAGES][name]) - 1)
-    basename = bot.db[Db.QUICK_IMAGES][name][index].split('/')[-1]
-    image_text = f'|| {bot.db[Db.QUICK_IMAGES][name][index]} ||' if basename.startswith('SPOILER_') else bot.db[Db.QUICK_IMAGES][name][index]
-    await ctx.send(content=f'[{index+1}/{len(bot.db[Db.QUICK_IMAGES][name])}] {image_text}')
+    index = random.randint(0, len(bot.db[Db.QUICK_IMAGES.value][name]) - 1)
+    basename = bot.db[Db.QUICK_IMAGES.value][name][index].split('/')[-1]
+    image_text = f'|| {bot.db[Db.QUICK_IMAGES.value][name][index]} ||' if basename.startswith('SPOILER_') else bot.db[Db.QUICK_IMAGES.value][name][index]
+    await ctx.send(content=f'[{index+1}/{len(bot.db[Db.QUICK_IMAGES.value][name])}] {image_text}')
 
 @bot.command(aliases=['ir'])
 async def image_remove(ctx, name, index):
@@ -379,7 +382,7 @@ async def image_remove(ctx, name, index):
     """
     name = name.lower()
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send('There are no images to remove.')
         return
 
@@ -393,15 +396,15 @@ async def image_remove(ctx, name, index):
         await ctx.send('Please enter an integer index.')
         return
 
-    if index >= len(bot.db[Db.QUICK_IMAGES][name]):
+    if index >= len(bot.db[Db.QUICK_IMAGES.value][name]):
         await ctx.send('Invalid index.')
         return
 
-    del bot.db[Db.QUICK_IMAGES][name][index]
+    del bot.db[Db.QUICK_IMAGES.value][name][index]
 
     bot.db_write(Db.QUICK_IMAGES)
 
-    await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
+    await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES.value][name])} images.')
 
 @bot.command(aliases=['id'])
 async def image_dump(ctx, *args):
@@ -416,13 +419,13 @@ async def image_dump(ctx, *args):
     else:
         name = args[0].lower()
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send('There are no images to dump.')
         return
 
     text = f'```\nName: {name}\n=====================\n'
     
-    for i, image in enumerate(bot.db[Db.QUICK_IMAGES][name]):
+    for i, image in enumerate(bot.db[Db.QUICK_IMAGES.value][name]):
         line = f' {i+1:>3} {image}\n'
         if len(text) >= 2000 - len(line) - len('```'):
             await ctx.send(text + '```')
@@ -492,6 +495,34 @@ async def txt(ctx):
 if __name__ == '__main__':
     if not os.path.exists('servers.json'):
         print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
+
+# TODO Clean
+@bot.event
+async def on_message(message):
+    # The morning event
+    async def morning_counter(message):
+        if (message.author == bot.user):
+            return
+        if (MORNING_REGEX.match(message.content)):
+            bot.morning_counter += 1
+        if bot.morning_counter == 5:
+            bot.morning_counter = 0
+            await message.channel.send('Morning') 
+    await morning_counter(message)  
+    await bot.process_commands(message)
+
+if not os.path.exists('servers.json'):
+    print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
+    sys.exit(1)
+
+if not os.path.exists('token.txt'):
+    print('Token file not found. Place your Discord token ID in a file called `token.txt`.', file=sys.stderr)
+    sys.exit(1)
+
+with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_file:
+    servers = json.load(servers_file)
+    if sys.argv[1] not in servers:
+        print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
         sys.exit(1)
 
     if not os.path.exists('token.txt'):
