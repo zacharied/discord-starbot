@@ -134,7 +134,7 @@ class Starbot(commands.Bot):
         from cogs.quick_images import QuickImages
         self.add_cog(QuickImages(self, logging))
 
-        if self.db[Db.SETTINGS.value]['points_tracker']['enabled'] is True:
+        if 'points_tracker' in self.db[Db.SETTINGS.value] and self.db[Db.SETTINGS.value]['points_tracker']['enabled'] is True:
             # Start points tracker loop.
             from cogs.points_tracker import PointsTracker
             tracker = PointsTracker(self, logging)
@@ -251,7 +251,7 @@ async def opinion(ctx, name, *args):
         acc = ''
         for arg in args:
             acc += arg + ' '
-        bot.db[Db.OPINIONS][name] = acc.strip()
+        bot.db[Db.OPINIONS.value][name] = acc.strip()
 
         await ctx.send(f'Gotcha, my new opinion of {name} is "{acc.strip()}".')
 
@@ -268,12 +268,12 @@ async def opinion(ctx, name, *args):
         await ctx.send('bad boy') 
         return
 
-    if name not in bot.db[Db.OPINIONS]:
+    if name not in bot.db[Db.OPINIONS.value]:
         logging.debug(f'Opinion for "{name}" not found.')
         await ctx.send(f'I have no thoughts on {name}')
         return
 
-    await ctx.send(bot.db[Db.OPINIONS][name])
+    await ctx.send(bot.db[Db.OPINIONS.value][name])
 
 @bot.command(aliases=['ilock'])
 async def image_name_lock(ctx, name):
@@ -284,20 +284,20 @@ async def image_name_lock(ctx, name):
     """
     name = name.lower()
 
-    if name in bot.db[Db.NAME_LOCKS]:
-        if bot.db[Db.NAME_LOCKS][name] == ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS.value]:
+        if bot.db[Db.NAME_LOCKS.value][name] == ctx.author.id:
             await ctx.send('You already own that name!')
         else:
             await ctx.send(f'"{name}" is already owned by someone else.')
         return
 
-    for k, v in bot.db[Db.NAME_LOCKS].items():
+    for k, v in bot.db[Db.NAME_LOCKS.value].items():
         if v == ctx.author.id:
             await ctx.send(f'Relinquished ownership of the name "{k}".')
-            del bot.db[Db.NAME_LOCKS][k]
+            del bot.db[Db.NAME_LOCKS.value][k]
             break
     
-    bot.db[Db.NAME_LOCKS][name] = ctx.author.id
+    bot.db[Db.NAME_LOCKS.value][name] = ctx.author.id
     bot.db_write(Db.NAME_LOCKS)
     await ctx.send(f'You now have ownership of "{name}". Enjoy!')
 
@@ -308,7 +308,7 @@ async def image_list_names(ctx):
     """
     out = "```\n"
 
-    for name, image_list in items(bot.db[Db.NAME_LOCKS]):
+    for name, image_list in items(bot.db[Db.NAME_LOCKS.value]):
         out += f'{name} | {len(image_list)}\n'
          
     return out + "```"
@@ -333,18 +333,18 @@ async def image_add(ctx, *args):
         await ctx.send('Attach an image for me to save it.')
         return
 
-    if name in bot.db[Db.NAME_LOCKS] and bot.db[Db.NAME_LOCKS][name] != ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS.value] and bot.db[Db.NAME_LOCKS.value][name] != ctx.author.id:
         await ctx.send('You are not the owner of that name, so you cannot add images to it.')
         return
 
     logging.debug(f'Adding image "{url}" to quickimages of {name}.')
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
-        bot.db[Db.QUICK_IMAGES][name] = []
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
+        bot.db[Db.QUICK_IMAGES.value][name] = []
     
-    bot.db[Db.QUICK_IMAGES][name].append(url)
+    bot.db[Db.QUICK_IMAGES.value][name].append(url)
 
-    await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
+    await ctx.send(f'Added. {name} now has {len(bot.db[Db.QUICK_IMAGES.value][name])} images.')
 
     bot.db_write(Db.QUICK_IMAGES)
 
@@ -365,14 +365,14 @@ async def image_get(ctx, *args):
     if len(args) > 1:
         await ctx.send('Too many arguments!')
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send(f'I have no images for {name}. Please register some with `&ia`')
         return
     
-    index = random.randint(0, len(bot.db[Db.QUICK_IMAGES][name]) - 1)
-    basename = bot.db[Db.QUICK_IMAGES][name][index].split('/')[-1]
-    image_text = f'|| {bot.db[Db.QUICK_IMAGES][name][index]} ||' if basename.startswith('SPOILER_') else bot.db[Db.QUICK_IMAGES][name][index]
-    await ctx.send(content=f'[{index+1}/{len(bot.db[Db.QUICK_IMAGES][name])}] {image_text}')
+    index = random.randint(0, len(bot.db[Db.QUICK_IMAGES.value][name]) - 1)
+    basename = bot.db[Db.QUICK_IMAGES.value][name][index].split('/')[-1]
+    image_text = f'|| {bot.db[Db.QUICK_IMAGES.value][name][index]} ||' if basename.startswith('SPOILER_') else bot.db[Db.QUICK_IMAGES.value][name][index]
+    await ctx.send(content=f'[{index+1}/{len(bot.db[Db.QUICK_IMAGES.value][name])}] {image_text}')
 
 @bot.command(aliases=['ir'])
 async def image_remove(ctx, name, index):
@@ -382,11 +382,11 @@ async def image_remove(ctx, name, index):
     """
     name = name.lower()
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send('There are no images to remove.')
         return
 
-    if name in bot.db[Db.NAME_LOCKS] and bot.db[Db.NAME_LOCKS][name] != ctx.author.id:
+    if name in bot.db[Db.NAME_LOCKS.value] and bot.db[Db.NAME_LOCKS.value][name] != ctx.author.id:
         await ctx.send('You are not the owner of that name, so you cannot remove images from it.')
         return
 
@@ -396,15 +396,15 @@ async def image_remove(ctx, name, index):
         await ctx.send('Please enter an integer index.')
         return
 
-    if index >= len(bot.db[Db.QUICK_IMAGES][name]):
+    if index >= len(bot.db[Db.QUICK_IMAGES.value][name]):
         await ctx.send('Invalid index.')
         return
 
-    del bot.db[Db.QUICK_IMAGES][name][index]
+    del bot.db[Db.QUICK_IMAGES.value][name][index]
 
     bot.db_write(Db.QUICK_IMAGES)
 
-    await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES][name])} images.')
+    await ctx.send(f'Deleted. {name} now has {len(bot.db[Db.QUICK_IMAGES.value][name])} images.')
 
 @bot.command(aliases=['id'])
 async def image_dump(ctx, *args):
@@ -419,13 +419,13 @@ async def image_dump(ctx, *args):
     else:
         name = args[0].lower()
 
-    if name not in bot.db[Db.QUICK_IMAGES]:
+    if name not in bot.db[Db.QUICK_IMAGES.value]:
         await ctx.send('There are no images to dump.')
         return
 
     text = f'```\nName: {name}\n=====================\n'
     
-    for i, image in enumerate(bot.db[Db.QUICK_IMAGES][name]):
+    for i, image in enumerate(bot.db[Db.QUICK_IMAGES.value][name]):
         line = f' {i+1:>3} {image}\n'
         if len(text) >= 2000 - len(line) - len('```'):
             await ctx.send(text + '```')

@@ -104,7 +104,6 @@ class PointsTracker(bot_cog.StarbotCog):
         if len(members) == 0:
             if self.is_hibernating is False:
                 await self.output_channel.send("Everyone left voice chat. I'll stop updating the scoreboard.")
-                self.
                 self.is_hibernating = True
             return
 
