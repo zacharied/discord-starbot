@@ -131,6 +131,9 @@ class Starbot(commands.Bot):
         self.guild: discord.Guild = self.get_guild(self.guild_id)
         logging.info(f'Logged in as "{self.user}".')
 
+        from cogs.quick_images import QuickImages
+        self.add_cog(QuickImages(self, logging))
+
         if self.db[Db.SETTINGS.value]['points_tracker']['enabled'] is True:
             # Start points tracker loop.
             from cogs.points_tracker import PointsTracker
