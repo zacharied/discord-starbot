@@ -25,6 +25,7 @@ log_handler = RotatingFileHandler('bot.log', maxBytes=1024*1024*5, backupCount=2
 logging.basicConfig(level=logging.INFO, handlers=[log_handler, logging.StreamHandler()])
 
 ILEE_REGEX = re.compile(r'^[i1lI\|]{2}ee(10+)?$')
+MORNING_REGEX = re.compile(r'(?:^|\W)(morning)(?:$|\W)', re.IGNORECASE)
 
 GOODBOY_RESPONSES = [
     'わんわん！',
@@ -58,6 +59,8 @@ class Starbot(commands.Bot):
         self.db = {}
         for d in Db:
             self.db_load(d)
+
+        self.morning_counter = 0
 
         return super().run(*args, **kwargs)
 
@@ -199,6 +202,7 @@ def check_guild(ctx):
         raise DifferentServerCheckFail()
     return True
 
+
 @bot.command()
 async def delete_starred(ctx, message_id):
     try:
@@ -215,7 +219,6 @@ async def delete_starred(ctx, message_id):
         if bot.message_map[k] != int(message_id):
             new_map[k] = bot.message_map[k] 
     bot.message_map = new_map
-
     bot.db_write(Db.MESSAGE_MAP)
 
 @bot.command()
@@ -495,6 +498,34 @@ async def txt(ctx):
 if __name__ == '__main__':
     if not os.path.exists('servers.json'):
         print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
+
+# TODO Clean
+@bot.event
+async def on_message(message):
+    # The morning event
+    async def morning_counter(message):
+        if (message.author == bot.user):
+            return
+        if (MORNING_REGEX.match(message.content)):
+            bot.morning_counter += 1
+        if bot.morning_counter == 5:
+            bot.morning_counter = 0
+            await message.channel.send('Morning') 
+    await morning_counter(message)  
+    await bot.process_commands(message)
+
+if not os.path.exists('servers.json'):
+    print('Servers file not found. Please make a file called `severs.json` and put the server names as keys and their IDs as values.', file=sys.stderr)
+    sys.exit(1)
+
+if not os.path.exists('token.txt'):
+    print('Token file not found. Place your Discord token ID in a file called `token.txt`.', file=sys.stderr)
+    sys.exit(1)
+
+with open('token.txt', 'r') as token_file, open('servers.json', 'r') as servers_file:
+    servers = json.load(servers_file)
+    if sys.argv[1] not in servers:
+        print(f'Server "{sys.argv[1]}" not found. Aborting.', file=sys.stderr)
         sys.exit(1)
 
     if not os.path.exists('token.txt'):
