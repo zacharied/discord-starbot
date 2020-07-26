@@ -1,3 +1,4 @@
+# TODO Externalize this (see https://github.com/zacharied/discord-eprompt)
 import asyncio
 
 import discord
